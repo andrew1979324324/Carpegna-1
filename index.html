@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Calendario Lavoro</title>
+
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#007bff">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" sizes="192x192" href="logo.png">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+body{font-family:sans-serif;background:#f4f4f9;display:flex;flex-direction:column;align-items:center;padding:10px; margin:0;}
+.controls{margin-bottom:20px; display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: center;}
+select{padding:8px;font-size:16px;border-radius:5px}
+.btn-ui {color: white; padding: 8px 12px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 13px;}
+.btn-annual { background: #007bff; }
+.btn-monthly { background: #6f42c1; }
+table{border-collapse:collapse; width: 100%; max-width: 850px; background:white; box-shadow:0 4px 8px rgba(0,0,0,.1); table-layout: fixed;}
+th,td{border:1px solid #ddd; height:80px; vertical-align:top; padding:4px; cursor:pointer; transition: background 0.2s; overflow: hidden;}
+th{background:#333;color:white; height: 30px; font-size: 12px;}
+.other-month{color:#ccc;background:#fafafa}
+.company-label{font-size:9px;font-weight:bold;color:rgba(0,0,0,0.8); margin-bottom:2px; line-height: 1;}
+.paid-day { text-decoration: line-through; opacity: 0.5; }
+.modal-overlay {display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);justify-content:center;align-items:center;z-index: 1000;}
+.modal{background:white;padding:20px;border-radius:12px;width:90%;max-width:400px;max-height: 90vh;overflow-y: auto;}
+.summary-title { border-bottom: 2px solid #007bff; margin-bottom: 15px; padding-bottom: 5px; }
+.summary-item { padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; border-radius: 4px; display: flex; justify-content: space-between; margin-bottom: 8px; align-items: center;}
+.highlight-net { border-left-color: #28a745; background: #e8f5e9; font-weight: bold; }
+.btn-excel { background: #1d6f42; color: white; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; border: none; }
+.input-group{margin:10px 0}
+.input-group label{font-weight:bold;display:block;margin-bottom:5px; font-size: 14px;}
+.input-group select, .input-group input{width:100%; padding:8px; box-sizing:border-box;}
+.modal-buttons{display:flex;justify-content:space-between;margin-top:20px; gap: 5px;}
+button{padding:10px 12px;border:none;border-radius:6px;font-weight:bold;cursor:pointer; font-size: 13px;}
+.btn-save{background:#28a745;color:white}
+.btn-cancel{background:#6c757d;color:white}
+.btn-delete{background:#dc3545;color:white}
+.btn-copy{background:#f39c12;color:white}
+.btn-paste{background:#3498db;color:white}
+.stats-container {margin-top: 15px; padding: 12px; background: #e9ecef; border-radius: 8px; font-size: 13px; border-left: 5px solid #007bff;}
+.stat-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+.company-detail { font-size: 0.85em; background: #ffffff !important; border-left-color: #6c757d !important; flex-direction: column; align-items: flex-start !important;}
+.company-header-row { display: flex; justify-content: space-between; width: 100%; align-items: center; margin-bottom: 8px;}
+.invoice-box { width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 5px; border-top: 1px dashed #ccc; padding-top: 5px;}
+.invoice-box label { font-size: 11px; font-weight: bold; color: #555; white-space: nowrap; }
+.invoice-box input, .invoice-box select { flex: 1; padding: 4px; font-size: 12px; border: 1px solid #ddd; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="controls">
+    <select id="monthSelect"></select>
+    <select id="yearSelect"></select>
+    <button class="btn-ui btn-annual" onclick="openSummary('annual')">📊 Annuale</button>
+    <button class="btn-ui btn-monthly" onclick="openSummary('monthly')">📅 Mensile</button>
+</div>
+
+<table>
+    <thead><tr><th>Lun</th><th>Mar</th><th>Mer</th><th>Gio</th><th>Ven</th><th>Sab</th><th>Dom</th></tr></thead>
+    <tbody id="calendarBody"></tbody>
+</table>
+
+<div id="modalOverlay" class="modal-overlay">
+    <div class="modal">
+        <h3 id="modalDateText" style="margin:0 0 10px 0;"></h3>
+        <button id="pasteBtn" class="btn-paste" onclick="pasteData()" style="display:none; width:100%; margin-bottom:10px;">📋 Incolla Dati</button>
+        <div class="input-group">
+            <label>Società</label>
+            <select id="companySelect">
+                <option value="">-- Nessuna --</option>
+                <option>Anteprima Video</option><option>Airone</option><option>Av Set</option>
+                <option>B-Nomio</option><option>Centro Pilota</option><option>Ciccarelli</option>
+                <option>Dafral Soundvision</option><option>De Simoni</option><option>Digital Network</option>
+                <option>DHS</option><option>F.A.R.E. Servizi</option><option>Gruppo Planet</option>
+                <option>HRC</option><option>Ifet</option><option>Livon</option><option>Lvs</option>
+                <option>Milani group</option><option>Mondialtecnica</option><option>Niutek</option>
+                <option>Onegroup</option><option>Sincronismi</option><option>Studiovisio</option>
+                <option>TCS 2000</option><option>Tecnoconference Roma</option><option>Tecnomeeting</option>
+                <option>Vms</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <label>Location</label>
+            <select id="locationSelect">
+                <option value="">-- Nessuna --</option>
+                <option>Anantara</option>
+                <option>Angelicum</option>
+                <option>A. Roma Lifestyle</option>
+                <option>Acquario Romano</option>
+                <option>Auditorium P.d. Musica</option>
+                <option>Bernini Bristol</option>
+                <option>H. Massimo d'Azeglio</option>
+                <option>Cardo Roma</option>
+                <option>Chiostro Del Bramante</option>
+                <option>Don Giovanni (Praga)</option>
+                <option>Fao</option>
+                <option>Hotel Vanvitelli</option>
+                <option>Ergife Palace Hotel</option>
+                <option>Esperienza Europa</option>
+                <option>Eurostars Roma Aeterna</option>
+                <option>Fiera di Bologna</option>
+                <option>Hoterl D. Camilla Savelli</option>
+                <option>H. Barcelò Mantegna</option>
+                <option>H. Bulgari</option>
+                <option>H. Dei Mellini</option>
+                <option>H. Le Merdien Visconti</option>
+                <option>H. Parco de Principi</option>
+                <option>Hotel Plaza</option>
+                <option>Holiday Inn Rome</option>
+                <option>H. Rome Airport</option>
+                <option>H. Rome Eur La Lama</option>
+                <option>H. Nazionale</option>
+                <option>H. Ripa</option>
+                <option>Boutique Calzavecchio</option>
+                <option>MOMEC</option>
+                <option>Nhow</option>
+                <option>Nh Centro</option>
+                <option>Nh Villa Carpegna</option>
+                <option>Nh Giustiniano</option>
+                <option>La Nuvola</option>
+                <option>Palazzo dell'INPS</option>
+                <option>Parlamento Europeo Italia</option>
+                <option>Rome Marriot P.H.</option>
+                <option>Rome Cavalieri</option>
+                <option>Salone delle Fontane</option>
+                <option>S. Rome P. De' Medici</option>
+                <option>StarHotels Metropole</option>
+                <option>Starhotels Excelsior (Bo)</option>
+                <option>StarHotels Michelangelo (Fi)</option>
+                <option>Spazio 900</option>
+                <option>Spazio Sette libreria</option>
+                <option>The Hivre Hotel</option>
+                <option>The Westin Warsaw</option>
+                <option>The Westin Excelsior Rome</option>
+                <option>The St. Regis Rome</option>
+                <option>The Space Cinema Moderno</option>
+                <option>Tempio di Adriano</option>
+                <option>Villa Miani</option>
+                <option>Studio Curtis</option>
+                <option>Villa Madama</option>
+            </select>
+        </div>
+        <div class="input-group"><label>Inizio</label><select id="startTime" onchange="updateModalStats()"></select></div>
+        <div class="input-group"><label>Fine</label><select id="endTime" onchange="updateModalStats()"></select></div>
+        <div class="input-group">
+            <label>Pausa pranzo</label>
+            <select id="lunchBreak" onchange="updateModalStats()">
+                <option value="si">Sì (Extra dopo 9h)</option>
+                <option value="no">No (Extra dopo 8h)</option>
+            </select>
+        </div>
+        <div id="statsArea" class="stats-container" style="display:none;">
+            <div class="stat-row"><span>Ore:</span><span id="displayHours">0</span></div>
+            <div class="stat-row"><span>Paga:</span><span id="displayPay">0€</span></div>
+        </div>
+        <div class="modal-buttons">
+            <button class="btn-delete" onclick="clearDay()">Svuota</button>
+            <button class="btn-copy" onclick="copyData()">Copia</button>
+            <button class="btn-save" onclick="saveAssignment()">Salva</button>
+            <button class="btn-cancel" onclick="closeModal()">X</button>
+        </div>
+    </div>
+</div>
+
+<div id="summaryOverlay" class="modal-overlay">
+    <div class="modal">
+        <h3 id="summaryTitle" class="summary-title"></h3>
+        <div id="summaryContent"></div>
+        <div style="margin-top: 20px; text-align: right;">
+            <button class="btn-cancel" onclick="closeSummary()">Chiudi</button>
+        </div>
+    </div>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+
+const coloriSocieta = { "Anteprima Video": "#ffeb3b", "Airone": "#81d4fa", "Av Set": "#a5d6a7", "B-Nomio": "#ffcc80", "Centro Pilota": "#ce93d8", "Ciccarelli": "#f48fb1", "Dafral Soundvision": "#90caf9", "De Simoni": "#bcaaa4", "Digital Network": "#eeeeee", "DHS": "#ffab91", "F.A.R.E. Servizi": "#c5e1a5", "Gruppo Planet": "#80cbc4", "HRC": "#fff59d", "Ifet": "#e6ee9c", "Livon": "#b0bec5", "Lvs": "#ffe082", "Milani group": "#d1c4e9", "Mondialtecnica": "#cfd8dc", "Niutek": "#ffccbc", "Onegroup": "#b2dfdb", "Sincronismi": "#f0f4c3", "Studiovisio": "#d7ccc8", "TCS 2000": "#f8bbd0", "Tecnoconference Roma": "#bbdefb", "Tecnomeeting": "#c8e6c9", "Vms": "#e1bee7" };
+
+let assegnazioni = JSON.parse(localStorage.getItem("calendarioLavoro")) || {};
+let fatture = JSON.parse(localStorage.getItem("archivioFatture")) || {}; 
+let pagamenti = JSON.parse(localStorage.getItem("archivioPagamenti")) || {}; 
+let clipboard = null;
+const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+
+const monthSelect = document.getElementById('monthSelect'), yearSelect = document.getElementById('yearSelect');
+mesi.forEach((m,i)=>monthSelect.add(new Option(m,i)));
+for(let y=2024;y<=2030;y++) yearSelect.add(new Option(y,y));
+monthSelect.value = new Date().getMonth(); yearSelect.value = new Date().getFullYear();
+
+function generaOrari(sel){
+    sel.innerHTML = '<option value="">--</option>';
+    for(let h=0;h<24;h++) for(let m=0;m<60;m+=30) {
+        const t = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+        sel.add(new Option(t,t));
+    }
+}
+generaOrari(document.getElementById('startTime')); generaOrari(document.getElementById('endTime'));
+
+function formatKey(date){ return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
+
+function calcolaDettagliGiorno(ass) {
+    if(!ass.start || !ass.end) return { ore:0, extra:0, paga:0 };
+    const [h1, m1] = ass.start.split(':').map(Number), [h2, m2] = ass.end.split(':').map(Number);
+    let inizio = h1 + (m1 / 60), fine = h2 + (m2 / 60);
+    if (fine <= inizio) fine += 24;
+    const oreTotali = fine - inizio, soglia = (ass.lunch === 'si') ? 9 : 8;
+    const oreExtra = oreTotali > soglia ? oreTotali - soglia : 0;
+    return { ore: oreTotali, extra: oreExtra, paga: 250 + (oreExtra * 25) };
+}
+
+function salvaFattura(soc, val) {
+    const key = `${yearSelect.value}_${monthSelect.value}_${soc}`;
+    fatture[key] = val;
+    localStorage.setItem("archivioFatture", JSON.stringify(fatture));
+}
+
+function salvaStatoPagamento(soc, val) {
+    const key = `${yearSelect.value}_${monthSelect.value}_${soc}`;
+    pagamenti[key] = val;
+    localStorage.setItem("archivioPagamenti", JSON.stringify(pagamenti));
+    generaCalendario();
+}
+
+function getFattura(soc) {
+    const key = `${yearSelect.value}_${monthSelect.value}_${soc}`;
+    return fatture[key] || "";
+}
+
+function getStatoPagamento(soc, y, m) {
+    const key = `${y}_${m}_${soc}`;
+    return pagamenti[key] || "no";
+}
+
+function scaricaExcelSocieta(soc) {
+    const anno = yearSelect.value, meseIdx = monthSelect.value;
+    const filtroMese = `${anno}-${String(parseInt(meseIdx)+1).padStart(2,'0')}`;
+    const rows = []; let totLordo = 0;
+    Object.keys(assegnazioni).sort().forEach(key => {
+        if (key.startsWith(filtroMese) && assegnazioni[key].company === soc) {
+            const ass = assegnazioni[key], d = calcolaDettagliGiorno(ass);
+            totLordo += d.paga;
+            rows.push({ "Data": key, "Società": ass.company, "Location": ass.location || "-", "Inizio": ass.start, "Fine": ass.end, "Straordinari (h)": d.extra.toFixed(2), "Paga (€)": d.paga.toFixed(2) });
+        }
+    });
+    rows.push({}); rows.push({ "Straordinari (h)": "NUM. FATTURA:", "Paga (€)": getFattura(soc) });
+    rows.push({ "Straordinari (h)": "LORDO:", "Paga (€)": totLordo.toFixed(2) });
+    const ws = XLSX.utils.json_to_sheet(rows), wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dettaglio");
+    XLSX.writeFile(wb, `${soc}_${mesi[meseIdx]}.xlsx`);
+}
+
+function openSummary(type) {
+    const anno = yearSelect.value, meseIdx = monthSelect.value;
+    const filtro = (type === 'annual') ? anno : `${anno}-${String(parseInt(meseIdx)+1).padStart(2,'0')}`;
+    let giornate = 0, lordo = 0, perSocieta = {};
+    for (const key in assegnazioni) {
+        if (key.startsWith(filtro)) {
+            giornate++; const d = calcolaDettagliGiorno(assegnazioni[key]), s = assegnazioni[key].company;
+            lordo += d.paga;
+            if (!perSocieta[s]) perSocieta[s] = { count: 0, lordo: 0 };
+            perSocieta[s].count++; perSocieta[s].lordo += d.paga;
+        }
+    }
+    const netto = lordo * 0.74;
+    document.getElementById('summaryTitle').textContent = type === 'annual' ? `Consuntivo ${anno}` : `Consuntivo ${mesi[meseIdx]}`;
+    let html = `<div class="summary-item"><span>Giornate:</span> <span>${giornate}</span></div><div class="summary-item"><span>Lordo:</span> <span>${lordo.toFixed(0)}€</span></div><div class="summary-item highlight-net"><span>Netto:</span> <span>${netto.toFixed(0)}€</span></div>`;
+    
+    Object.entries(perSocieta).sort((a,b) => b[1].lordo - a[1].lordo).forEach(([soc, dati]) => {
+        const nFattura = getFattura(soc);
+        const statoPagamento = getStatoPagamento(soc, anno, meseIdx);
+        html += `
+        <div class="summary-item company-detail">
+            <div class="company-header-row">
+                <div><strong>${soc}</strong> (${dati.lordo.toFixed(0)}€)</div>
+                ${type === 'monthly' ? `<button class="btn-excel" onclick="scaricaExcelSocieta('${soc.replace(/'/g, "\\'")}')">XL</button>` : ''}
+            </div>
+            ${type === 'monthly' ? `
+            <div class="invoice-box">
+                <label>Fatt:</label>
+                <input type="text" value="${nFattura}" onchange="salvaFattura('${soc.replace(/'/g, "\\'")}', this.value)">
+                <label>Pag:</label>
+                <select onchange="salvaStatoPagamento('${soc.replace(/'/g, "\\'")}', this.value)">
+                    <option value="no" ${statoPagamento === 'no' ? 'selected' : ''}>No</option>
+                    <option value="si" ${statoPagamento === 'si' ? 'selected' : ''}>Sì</option>
+                </select>
+            </div>` : ''}
+        </div>`;
+    });
+    document.getElementById('summaryContent').innerHTML = html;
+    document.getElementById('summaryOverlay').style.display = "flex";
+}
+
+function copyData() {
+    clipboard = { company: document.getElementById('companySelect').value, location: document.getElementById('locationSelect').value, start: document.getElementById('startTime').value, end: document.getElementById('endTime').value, lunch: document.getElementById('lunchBreak').value };
+    alert("Copiato!");
+}
+function pasteData() {
+    if(!clipboard) return;
+    document.getElementById('companySelect').value = clipboard.company; document.getElementById('locationSelect').value = clipboard.location;
+    document.getElementById('startTime').value = clipboard.start; document.getElementById('endTime').value = clipboard.end;
+    document.getElementById('lunchBreak').value = clipboard.lunch; updateModalStats();
+}
+function generaCalendario(){
+    const body = document.getElementById('calendarBody'); body.innerHTML="";
+    const mese = +monthSelect.value, anno = +yearSelect.value;
+    let d = new Date(anno,mese,1); d.setDate(d.getDate() - (d.getDay()+6)%7);
+    for(let r=0;r<6;r++){
+        const tr = document.createElement('tr');
+        for(let c=0;c<7;c++){
+            const cellDate = new Date(d), key = formatKey(cellDate), td = document.createElement('td');
+            if(cellDate.getMonth() !== mese) td.classList.add("other-month");
+            td.innerHTML = `<div>${cellDate.getDate()}</div>`;
+            if(assegnazioni[key]){
+                const a = assegnazioni[key]; 
+                const isPagata = getStatoPagamento(a.company, cellDate.getFullYear(), cellDate.getMonth()) === "si";
+                if(isPagata) td.classList.add("paid-day");
+                td.style.backgroundColor = coloriSocieta[a.company] || "#d4edda";
+                td.innerHTML += `<div class="company-label">${a.company}</div>`;
+            }
+            td.onclick = () => openModal(cellDate);
+            tr.appendChild(td); d.setDate(d.getDate()+1);
+        }
+        body.appendChild(tr);
+    }
+}
+function openModal(date){
+    selectedDateKey = formatKey(date);
+    document.getElementById('modalDateText').textContent = date.toLocaleDateString("it-IT",{day:'numeric',month:'short'});
+    const a = assegnazioni[selectedDateKey] || {};
+    document.getElementById('companySelect').value = a.company || ""; document.getElementById('locationSelect').value = a.location || "";
+    document.getElementById('startTime').value = a.start || ""; document.getElementById('endTime').value = a.end || "";
+    document.getElementById('lunchBreak').value = a.lunch || "si";
+    document.getElementById('pasteBtn').style.display = clipboard ? "block" : "none";
+    updateModalStats(); document.getElementById('modalOverlay').style.display="flex";
+}
+function saveAssignment(){
+    assegnazioni[selectedDateKey] = { company: document.getElementById('companySelect').value, location: document.getElementById('locationSelect').value, start: document.getElementById('startTime').value, end: document.getElementById('endTime').value, lunch: document.getElementById('lunchBreak').value };
+    localStorage.setItem("calendarioLavoro",JSON.stringify(assegnazioni)); closeModal(); generaCalendario();
+}
+function updateModalStats() {
+    const s = document.getElementById('startTime').value, e = document.getElementById('endTime').value;
+    if (!s || !e) { document.getElementById('statsArea').style.display="none"; return; }
+    const d = calcolaDettagliGiorno({start:s, end:e, lunch:document.getElementById('lunchBreak').value});
+    document.getElementById('statsArea').style.display="block"; document.getElementById('displayPay').textContent = d.paga.toFixed(0) + "€"; document.getElementById('displayHours').textContent = d.ore.toFixed(1);
+}
+function clearDay(){ delete assegnazioni[selectedDateKey]; localStorage.setItem("calendarioLavoro",JSON.stringify(assegnazioni)); closeModal(); generaCalendario(); }
+function closeModal(){ document.getElementById('modalOverlay').style.display="none"; }
+function closeSummary() { document.getElementById('summaryOverlay').style.display = "none"; }
+monthSelect.onchange = yearSelect.onchange = generaCalendario;
+generaCalendario();
+</script>
+</body>
+</html>
